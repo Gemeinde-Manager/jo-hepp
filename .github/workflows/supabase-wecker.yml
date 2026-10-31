@@ -1,0 +1,52 @@
+# Supabase-Wecker
+# Supabase legt kostenlose Projekte nach rund einer Woche ohne Zugriffe schlafen.
+# Dieser Ablauf fragt alle drei Tage kurz die Datenbank an, damit
+# Gemeinde-Manager und Buchhaltung wach bleiben.
+# Schlägt der Weckruf fehl, schickt GitHub eine E-Mail – dann ist das Projekt
+# bereits pausiert und muss einmal von Hand im Supabase-Dashboard
+# reaktiviert werden.
+
+name: Supabase-Wecker
+
+on:
+  schedule:
+    - cron: "17 6 */3 * *"   # alle drei Tage, 06:17 UTC
+  workflow_dispatch:          # zusätzlich per Knopfdruck startbar
+
+permissions:
+  contents: write
+
+jobs:
+  wecken:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Datenbank anstupsen
+        run: |
+          URL=$(grep -oE "SUPABASE_URL = '[^']+'" index.html | cut -d"'" -f2)
+          KEY=$(grep -oE "SUPABASE_KEY = '[^']+'" index.html | cut -d"'" -f2)
+          for TABLE in gruppen mitglieder; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+              "$URL/rest/v1/$TABLE?select=*&limit=1" \
+              -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+            echo "Tabelle $TABLE antwortet mit $CODE"
+            if [ "$CODE" != "200" ] && [ "$CODE" != "206" ]; then
+              echo "::error::Supabase antwortet nicht (Code $CODE). Projekt im Dashboard reaktivieren: https://supabase.com/dashboard/project/qvzwxtkqhatsqwbeoekc"
+              exit 1
+            fi
+          done
+
+      # GitHub schaltet geplante Abläufe ab, wenn im Repo 60 Tage nichts passiert.
+      # Deshalb einmal im Monat ein winziger Eintrag, damit der Wecker aktiv bleibt.
+      - name: Wecker selbst wach halten
+        run: |
+          MONAT=$(date -u +%Y-%m)
+          if [ ! -f .github/letzter-weckruf.txt ] || ! grep -q "$MONAT" .github/letzter-weckruf.txt; then
+            date -u +"%Y-%m-%d %H:%M UTC" > .github/letzter-weckruf.txt
+            git config user.name "Supabase-Wecker"
+            git config user.email "actions@users.noreply.github.com"
+            git add .github/letzter-weckruf.txt
+            git commit -m "Weckruf $MONAT"
+            git push
+          fi
