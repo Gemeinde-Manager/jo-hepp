@@ -20,7 +20,7 @@ jobs:
   wecken:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Datenbank anstupsen
         run: |
@@ -29,7 +29,7 @@ jobs:
           for TABLE in gruppen mitglieder; do
             CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
               "$URL/rest/v1/$TABLE?select=*&limit=1" \
-              -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+              -H "apikey: $KEY" -H "Authorization: Bearer $KEY") || CODE="000 (Server nicht erreichbar)"
             echo "Tabelle $TABLE antwortet mit $CODE"
             if [ "$CODE" != "200" ] && [ "$CODE" != "206" ]; then
               echo "::error::Supabase antwortet nicht (Code $CODE). Projekt im Dashboard reaktivieren: https://supabase.com/dashboard/project/qvzwxtkqhatsqwbeoekc"
